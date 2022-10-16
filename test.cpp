@@ -1,148 +1,146 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <string>
+//#include "/Users/anastasiapavluk/json/single_include/nlohmann/json.hpp"
 
+//using json = nlohmann::json;
 
 using namespace std;
 
 class condition {
-public: float xi, yi, omega;
+public: double xi, yi, omega;
 
-condition(float y, float x, float omega): yi(y), xi(x), omega(omega) {}
+condition(double y, double x, double omega): yi(y), xi(x), omega(omega) {}
 
+condition operator+ (condition other) {
+    return condition (this->yi+other.yi, this->xi+other.xi, this->omega);
+}
 
-condition evolution (float dt) {
-    condition cj (yi - dt * xi * omega, xi + dt * yi, omega);
+condition operator* (double a) {
+    return condition (a * this->yi, a * this->xi, this->omega);
+}
+};
+
+condition f(condition ci, double x) {
+    condition cj( - ci.xi * ci.omega, ci.yi, ci.omega);
     return cj;
 }
 
-condition heunev (float h) {
-    condition inter (yi - h * xi * omega, xi + h * yi, omega);
-    condition cj (yi - 0.5 * h * (xi*omega + inter.xi*omega), xi + 0.5 * h * (yi + inter.yi), omega);
-    return cj;
-}
+class solver {
 
+public: 
+    long n;
+    double y0, x0, omega, dt;
+    string type, name;
+    vector <condition> data;
+
+    solver(long n, double y0, double x0, double omega, double dt, string type, string name):
+    n(n), y0(y0), x0(x0), omega(omega), dt(dt), type(type), name(name) {
+
+        data.push_back(condition(y0, x0, omega));
+
+        if (type == "euler") {
+            for (long i = 1; i < n; ++i) {
+                data.push_back(data[i-1]+f(data[i-1], dt)*dt);
+            }
+        }
+
+        if (type == "heun") {
+            for (long i = 1; i < n; ++i) {
+                condition c1 = data[i-1] + (f(data[i-1], dt) * dt);
+                condition c2 = data[i-1] + ((f(data[i-1], dt) + f(c1, dt))*(dt/2));
+                data.push_back(c2);
+            }
+        }
+
+        if (type == "rg45") {
+            for (long i = 1; i < n; ++i) {
+                condition k1 = f(data[i-1], dt);
+                condition k2 = f(data[i-1] + (k1 * (dt/2)), dt);
+                condition k3 = f(data[i-1] + (k2 * (dt/2)), dt);
+                condition k4 = f(data[i-1] + (k3 * dt), dt);
+                condition c = data[i-1] + (k1 + (k2*2) + (k3*2) + k4) * (dt/6);
+                data.push_back(c);
+            }
+        }
+    }
+
+    void write() {
+        ofstream fout(this->name);
+        fout << "v x max dt n \n";
+        for (long i = 0; i < n; ++i) {
+            if (data[i].xi >= data[i-1].xi && data[i].xi >= data[i+1].xi) {
+                fout << data[i].yi << " " << data[i].xi << " " << data[i].xi <<" " << dt << " " << n << endl;
+            }
+            else {
+                fout << data[i].yi << " " << data[i].xi << " " << 0 <<" " << dt << " " << n << endl;
+            }
+        }
+        fout.close();
+    }
+
+    void clear(){
+        this->data.clear();
+    }
 };
 
 
-void data(int n, float x0, float y0, float omega, float dt, string name) {
-
-    condition c0 (x0, y0, omega);
-
-    vector<condition> d;
-
-    d.push_back(c0);
-    for (int i = 1; i < n; ++i) {
-        condition c1 = c0.evolution(dt);
-        d.push_back(c1);
-        c0 = c1;
-    }
-
-    vector<float> max;
-    
-    for (int i=1; i < n; ++i) {
-        if (d[i].yi >= d[i-1].yi & d[i].yi >= d[i+1].yi) {
-            max.push_back(d[i].yi/x0);
-        }
-        else {
-            max.push_back(0);
-        }
-    }
-
-    ofstream fout(name);
-    fout << "x v max dx n \n";
-    for (int i = 0; i < n; ++i) {
-        fout << d[i].xi << " " << d[i].yi << " " << max[i] <<" " << dt << " " << n << endl;
-    }
-
-    fout.close();
-}
-
-void dataheun(int n, float x0, float y0, float omega, float h, string name) {
-
-    condition c0 (x0, y0, omega);
-
-    vector<condition> d;
-
-    d.push_back(c0);
-    for (int i = 1; i < n; ++i) {
-        condition c1 = c0.heunev(h);
-        d.push_back(c1);
-        c0 = c1;
-    }
-
-    vector<float> max;
-    max.push_back(1);
-    for (int i=1; i < n; ++i) {
-        if (d[i].yi >= d[i-1].yi && d[i].yi >= d[i+1].yi) {
-            max.push_back(d[i].yi/x0);
-        }
-        else {
-            max.push_back(0);
-        }
-    }
-
-    ofstream fout(name);
-    fout << "v x max h n \n";
-    for (int i = 0; i < n; ++i) {
-        fout << d[i].xi << " " << d[i].yi << " " << max[i] << " " << h << " " << n << endl;
-    }
-
-    fout.close();
-}
-
-
-
-
 int main() {
+    double x0 = 6400000, y0 = 0, omega = 1, h = 0.1, dt = 0.1;
 
-    float x0 = 6400000, y0 = 0, omega = 1, h = 0.1, dt = 0.1;
+    vector <solver> Data;
 
-    data(20000, x0, y0, omega, 0.001, "e6400000_0_0001_20000.txt");
-    data(20000, x0, y0, omega, 0.005, "e6400000_0_0005_20000.txt");
-    data(20000, x0, y0, omega, 0.01,  "e6400000_0_001_20000.txt"); 
-    data(20000, x0, y0, omega, 0.02,  "e6400000_0_002_20000.txt"); 
-    data(20000, x0, y0, omega, 0.03,  "e6400000_0_003_20000.txt"); 
-    data(20000, x0, y0, omega, 0.04,  "e6400000_0_004_20000.txt"); 
-    data(20000, x0, y0, omega, 0.05,  "e6400000_0_005_20000.txt"); 
-    data(20000, x0, y0, omega, 0.06,  "e6400000_0_006_20000.txt"); 
-    data(20000, x0, y0, omega, 0.07,  "e6400000_0_007_20000.txt"); 
-    data(20000, x0, y0, omega, 0.08,  "e6400000_0_008_20000.txt"); 
-    data(20000, x0, y0, omega, 0.09,  "e6400000_0_009_20000.txt"); 
-    data(20000, x0, y0, omega, 0.1,   "e6400000_0_01_20000.txt"); 
-    data(20000, x0, y0, omega, 0.2,   "e6400000_0_02_20000.txt"); 
-    data(20000, x0, y0, omega, 0.3,   "e6400000_0_03_20000.txt"); 
-    data(20000, x0, y0, omega, 0.4,   "e6400000_0_04_20000.txt"); 
-    data(20000, x0, y0, omega, 0.5,   "e6400000_0_05_20000.txt");
-    data(20000, x0, y0, omega, 0.6,   "e6400000_0_06_20000.txt");
-    data(20000, x0, y0, omega, 0.7,   "e6400000_0_07_20000.txt");
-    data(20000, x0, y0, omega, 0.8,   "e6400000_0_08_20000.txt");
-    data(20000, x0, y0, omega, 0.9,   "e6400000_0_09_20000.txt");
-    data(20000, x0, y0, omega, 1,     "e6400000_0_1_20000.txt");
+    Data.push_back(solver(2000, 0, 6400000, 1, 0.1, "euler", "e6400000_0_01_2000.txt"));
+    Data.push_back(solver(500, 0, 6400000, 1, 0.1, "euler", "e6400000_0_01_500.txt"));
+    Data.push_back(solver(2000, 0, 6400000, 1, 0.5, "euler", "e6400000_0_05_2000.txt"));
+    Data.push_back(solver(2000, 0, 6400000, 1, 0.01, "euler", "e6400000_0_001_2000.txt"));
+
+    Data.push_back(solver(2000, 0, 6400000, 1, 0.1, "heun", "h6400000_0_01_2000.txt"));
+    Data.push_back(solver(100000, 0, 6400000, 1, 0.1, "heun", "h6400000_0_01_100000.txt"));
+    Data.push_back(solver(2000, 0, 6400000, 1, 0.5, "heun", "h6400000_0_05_2000.txt"));
+    Data.push_back(solver(2000, 0, 6400000, 1, 0.01, "heun", "h6400000_0_001_2000.txt"));
+
+    Data.push_back(solver(20000, 0, 6400000, 1, 0.001, "euler", "e6400000_0_0001_20000.txt"));
+    Data.push_back(solver(20000, 0, 6400000, 1, 0.005, "euler", "e6400000_0_0005_20000.txt"));
+
+    for (double i = 0.01; i <= 0.08;  i += 0.01) {
+        string s = to_string(i).substr(0, 1+to_string(i).find_last_not_of('0')), s1="";
+        for (unsigned j = 0; j < s.size(); ++j) if (s[j] != '.') s1 += s[j];
+        Data.push_back(solver(20000, 0, 6400000, 1, i, "euler", "e6400000_0_"+s1+"_20000.txt"));
+        cout << "e6400000_0_"+s1+"_20000.txt" << endl;
+    }
+
+    for (double i = 0.01; i <= 0.09;  i += 0.01) {
+        string s = to_string(i).substr(0, 1+to_string(i).find_last_not_of('0')), s1="";
+        for (unsigned j = 0; j < s.size(); ++j) if (s[j] != '.') s1 += s[j];
+        Data.push_back(solver(20000, 0, 6400000, 1, i, "heun", "h6400000_0_"+s1+"_20000.txt"));
+    }
+
+    for (double i = 0.1; i <= 0.4;  i += 0.1) {
+        string s = to_string(i).substr(0, 1+to_string(i).find_last_not_of('0')), s1="";
+        for (unsigned j = 0; j < s.size(); ++j) if (s[j] != '.') s1 += s[j];
+        Data.push_back(solver(20000, 0, 6400000, 1, i, "heun", "h6400000_0_"+s1+"_20000.txt"));
+    }
+
+    for (double i = 0.01; i <= 0.09;  i += 0.01) {
+        string s = to_string(i).substr(0, 1+to_string(i).find_last_not_of('0')), s1="";
+        for (unsigned j = 0; j < s.size(); ++j) if (s[j] != '.') s1 += s[j];
+        Data.push_back(solver(20000, 0, 6400000, 1, i, "rg45", "rg6400000_0_"+s1+"_20000.txt"));
+    }
     
 
-    dataheun(20000, x0, y0, omega, 0.001, "h6400000_0_0001_20000.txt");
-    dataheun(20000, x0, y0, omega, 0.005, "h6400000_0_0005_20000.txt");
-    dataheun(20000, x0, y0, omega, 0.01,  "h6400000_0_001_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.02,  "h6400000_0_002_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.03,  "h6400000_0_003_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.04,  "h6400000_0_004_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.05,  "h6400000_0_005_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.06,  "h6400000_0_006_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.07,  "h6400000_0_007_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.08,  "h6400000_0_008_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.09,  "h6400000_0_009_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.1,   "h6400000_0_01_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.2,   "h6400000_0_02_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.3,   "h6400000_0_03_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.4,   "h6400000_0_04_20000.txt"); 
-    dataheun(20000, x0, y0, omega, 0.5,   "h6400000_0_05_20000.txt");
-    dataheun(20000, x0, y0, omega, 0.6,   "h6400000_0_06_20000.txt");
-    dataheun(20000, x0, y0, omega, 0.7,   "h6400000_0_07_20000.txt");
-    dataheun(20000, x0, y0, omega, 0.8,   "h6400000_0_08_20000.txt");
-    dataheun(20000, x0, y0, omega, 0.9,   "h6400000_0_09_20000.txt");
-    dataheun(20000, x0, y0, omega, 1,     "h6400000_0_1_20000.txt");
-   
+    for (int i = 0; i < Data.size(); ++i) {
+        Data[i].write();
+    }
+/*
+    double d = 0.01;
+    string s = to_string(d);
+    cout << s << endl;
+
+    cout << s.substr(0, s.find_last_not_of('0')+1) << endl;
+*/
+    //cout << config.dump(4);
     return 0;
 }
 
